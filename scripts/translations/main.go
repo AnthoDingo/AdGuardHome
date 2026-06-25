@@ -215,12 +215,12 @@ func (c *twoskyClient) unused(ctx context.Context, l *slog.Logger) (err error) {
 		return fmt.Errorf("reading locales: %w", err)
 	}
 
-	jsFiles, err := c.findJS(ctx, l)
+	srcFiles, err := c.findSourceFiles(ctx, l)
 	if err != nil {
 		return fmt.Errorf("collecting js files: %w", err)
 	}
 
-	err = findUnused(jsFiles, baseLocales)
+	err = findUnused(srcFiles, baseLocales)
 	if err != nil {
 		return fmt.Errorf("finding unused files: %w", err)
 	}
@@ -228,8 +228,8 @@ func (c *twoskyClient) unused(ctx context.Context, l *slog.Logger) (err error) {
 	return nil
 }
 
-// findJS returns list of JavaScript and JSON source files.  l must not be nil.
-func (c *twoskyClient) findJS(ctx context.Context, l *slog.Logger) (fileNames []string, err error) {
+// findSourceFiles returns list of source files.  l must not be nil.
+func (c *twoskyClient) findSourceFiles(ctx context.Context, l *slog.Logger) (fileNames []string, err error) {
 	locDir := filepath.Clean(c.localesDir)
 
 	walkFn := func(name string, _ os.FileInfo, pErr error) (err error) {
@@ -244,7 +244,7 @@ func (c *twoskyClient) findJS(ctx context.Context, l *slog.Logger) (fileNames []
 		}
 
 		ext := filepath.Ext(name)
-		if ext == ".js" || ext == ".json" {
+		if ext == ".js" || ext == ".json" || ext == ".ts" || ext == ".tsx" {
 			fileNames = append(fileNames, name)
 		}
 
