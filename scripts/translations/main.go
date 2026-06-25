@@ -234,7 +234,7 @@ func (c *twoskyClient) findJS(ctx context.Context, l *slog.Logger) (fileNames []
 
 	walkFn := func(name string, _ os.FileInfo, pErr error) (err error) {
 		if pErr != nil {
-			l.WarnContext(ctx, "accessing a path", slogutil.KeyError, err)
+			l.WarnContext(ctx, "accessing a path", slogutil.KeyError, pErr)
 
 			return nil
 		}
