@@ -3,7 +3,7 @@
     "project_id": "home",
     "base_locale": "en",
     "localizable_files": [
-      "en.json"
+      "client/src/__locales/en.json"
     ],
     "languages": {
       "ar": "العربية",
@@ -52,7 +52,7 @@
     "project_id": "hostlists-registry",
     "base_locale": "en",
     "localizable_files": [
-      "services.json"
+      "client/src/__locales-services/services.json"
     ],
     "languages": {
       "ar": "العربية",
