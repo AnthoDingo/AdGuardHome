@@ -206,7 +206,7 @@ Optional environment:
 
 - `go run ./scripts/translations auto-add`: add locales with additions to the git and restore locales with deletions.
 
-After the download you’ll find the output locales in the `client/src/__locales/` directory.
+After the download you’ll find the output locales in the configured directory.
 
 Optional environment:
 
