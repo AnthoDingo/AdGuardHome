@@ -92,6 +92,22 @@ func newCountryBlocker(logger *slog.Logger) *countryBlocker {
 	}
 }
 
+// buildPrefixTree constructs a split-by-family prefixTree from a per-country
+// prefix map.  Separating this step keeps update's cognitive complexity low.
+func buildPrefixTree(perCountry map[string][]netip.Prefix) (t prefixTree) {
+	for _, ps := range perCountry {
+		for _, p := range ps {
+			if p.Addr().Is4() || p.Addr().Is4In6() {
+				t.v4 = append(t.v4, p)
+			} else {
+				t.v6 = append(t.v6, p)
+			}
+		}
+	}
+
+	return t
+}
+
 // update fetches IP ranges for the given country codes and replaces the current
 // set of blocked prefixes.  Each code must be a two-letter ISO 3166-1 alpha-2
 // string (e.g. "fr", "us").  Invalid codes are rejected immediately; fetch
@@ -133,21 +149,9 @@ func (cb *countryBlocker) update(ctx context.Context, countryCodes []string) err
 		)
 	}
 
-	// Rebuild split-by-family tree for fast lookup.
-	newTree := prefixTree{}
-	for _, ps := range newPerCountry {
-		for _, p := range ps {
-			if p.Addr().Is4() || p.Addr().Is4In6() {
-				newTree.v4 = append(newTree.v4, p)
-			} else {
-				newTree.v6 = append(newTree.v6, p)
-			}
-		}
-	}
-
 	cb.mu.Lock()
 	cb.perCountry = newPerCountry
-	cb.tree = newTree
+	cb.tree = buildPrefixTree(newPerCountry)
 	cb.mu.Unlock()
 
 	return nil

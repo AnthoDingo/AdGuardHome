@@ -521,11 +521,7 @@ func (s *Server) Prepare(ctx context.Context, conf *ServerConfig) (err error) {
 		return fmt.Errorf("preparing access: %w", err)
 	}
 
-	if len(s.conf.BlockedCountries) > 0 {
-		if cbErr := s.countryBlocker.update(ctx, s.conf.BlockedCountries); cbErr != nil {
-			s.logger.WarnContext(ctx, "initializing country blocker", "err", cbErr)
-		}
-	}
+	s.initCountryBlocker(ctx)
 
 	proxyConfig.Fallbacks, err = s.setupFallbackDNS()
 	if err != nil {
@@ -905,6 +901,19 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if prx := s.proxy(); prx != nil {
 		prx.ServeHTTP(w, r)
+	}
+}
+
+// initCountryBlocker loads IP ranges for any configured blocked countries.
+// It is called from Prepare and is a no-op when no countries are configured.
+// Errors are logged and do not prevent the server from starting.
+func (s *Server) initCountryBlocker(ctx context.Context) {
+	if len(s.conf.BlockedCountries) == 0 || s.countryBlocker == nil {
+		return
+	}
+
+	if err := s.countryBlocker.update(ctx, s.conf.BlockedCountries); err != nil {
+		s.logger.WarnContext(ctx, "initializing country blocker", "err", err)
 	}
 }
 
