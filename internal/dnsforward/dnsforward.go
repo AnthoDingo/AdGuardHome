@@ -912,9 +912,7 @@ func (s *Server) initCountryBlocker(ctx context.Context) {
 		return
 	}
 
-	if err := s.countryBlocker.update(ctx, s.conf.BlockedCountries); err != nil {
-		s.logger.WarnContext(ctx, "initializing country blocker", "err", err)
-	}
+	s.countryBlocker.update(ctx, s.conf.BlockedCountries)
 }
 
 // isBlockedByIP returns whether ip is blocked by the access list or the country

@@ -299,10 +299,7 @@ func (s *Server) handleAccessSet(w http.ResponseWriter, r *http.Request) {
 		countries := list.BlockedCountries
 		go func() {
 			bgCtx := context.Background()
-			updateErr := s.countryBlocker.update(bgCtx, countries)
-			if updateErr != nil {
-				l.WarnContext(bgCtx, "updating country blocker", "err", updateErr)
-			}
+			s.countryBlocker.update(bgCtx, countries)
 		}()
 	}
 }
@@ -324,12 +321,7 @@ func (s *Server) handleRefreshBlockedCountries(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if err := s.countryBlocker.update(ctx, countries); err != nil {
-		aghhttp.ErrorAndLog(ctx, s.logger, r, w, http.StatusInternalServerError,
-			"refreshing country IP ranges: %s", err)
-
-		return
-	}
+	s.countryBlocker.update(ctx, countries)
 
 	aghhttp.WriteJSONResponseOK(ctx, s.logger, w, r, struct {
 		Message string `json:"message"`

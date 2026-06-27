@@ -113,7 +113,7 @@ func buildPrefixTree(perCountry map[string][]netip.Prefix) (t prefixTree) {
 // string (e.g. "fr", "us").  Invalid codes are rejected immediately; fetch
 // errors for individual countries are logged and skipped so that other
 // countries can still be loaded.
-func (cb *countryBlocker) update(ctx context.Context, countryCodes []string) error {
+func (cb *countryBlocker) update(ctx context.Context, countryCodes []string) {
 	newPerCountry := make(map[string][]netip.Prefix, len(countryCodes))
 
 	for _, raw := range countryCodes {
@@ -154,7 +154,6 @@ func (cb *countryBlocker) update(ctx context.Context, countryCodes []string) err
 	cb.tree = buildPrefixTree(newPerCountry)
 	cb.mu.Unlock()
 
-	return nil
 }
 
 // fetchCountry downloads and parses the zone file for a single country code.
