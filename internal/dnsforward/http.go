@@ -834,6 +834,8 @@ func (s *Server) registerHandlers() {
 	s.conf.HTTPReg.Register(http.MethodGet, "/control/access/list", s.handleAccessList)
 	s.conf.HTTPReg.Register(http.MethodPost, "/control/access/set", s.handleAccessSet)
 
+	s.conf.HTTPReg.Register(http.MethodPost, "/control/access/blocked_countries/refresh", s.handleRefreshBlockedCountries)
+
 	s.conf.HTTPReg.Register(http.MethodPost, "/control/cache_clear", s.handleCacheClear)
 
 	webRegistered = true

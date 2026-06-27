@@ -127,6 +127,9 @@ type Server struct {
 	// access drops disallowed clients.
 	access *accessManager
 
+	// countryBlocker blocks clients from specific countries.
+	countryBlocker *countryBlocker
+
 	// anonymizer masks the client's IP addresses if needed.
 	anonymizer *aghnet.IPMut
 
@@ -256,6 +259,8 @@ func NewServer(p DNSCreateParams) (s *Server, err error) {
 			ServePlainDNS: true,
 		},
 	}
+
+	s.countryBlocker = newCountryBlocker(s.logger)
 
 	s.sysResolvers, err = sysresolv.NewSystemResolvers(nil, defaultPlainDNSPort)
 	if err != nil {
@@ -514,6 +519,12 @@ func (s *Server) Prepare(ctx context.Context, conf *ServerConfig) (err error) {
 	)
 	if err != nil {
 		return fmt.Errorf("preparing access: %w", err)
+	}
+
+	if len(s.conf.BlockedCountries) > 0 {
+		if cbErr := s.countryBlocker.update(ctx, s.conf.BlockedCountries); cbErr != nil {
+			s.logger.WarnContext(ctx, "initializing country blocker", "err", cbErr)
+		}
 	}
 
 	proxyConfig.Fallbacks, err = s.setupFallbackDNS()
@@ -906,6 +917,14 @@ func (s *Server) IsBlockedClient(ip netip.Addr, clientID string) (blocked bool, 
 	blockedByIP := false
 	if ip != (netip.Addr{}) {
 		blockedByIP, rule = s.access.isBlockedIP(ip)
+
+		// Also check country-based blocking (only in blocklist mode).
+		if !blockedByIP && !s.access.allowlistMode() && s.countryBlocker != nil {
+			if s.countryBlocker.isBlockedIP(ip) {
+				blockedByIP = true
+				rule = "country:" + ip.String()
+			}
+		}
 	}
 
 	allowlistMode := s.access.allowlistMode()

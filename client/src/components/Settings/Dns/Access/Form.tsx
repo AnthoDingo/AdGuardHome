@@ -5,11 +5,13 @@ import { Trans, useTranslation } from 'react-i18next';
 import { CLIENT_ID_LINK } from '../../../../helpers/constants';
 import { removeEmptyLines, trimMultilineString } from '../../../../helpers/helpers';
 import { Textarea } from '../../../ui/Controls/Textarea';
+import CountrySelector from './CountrySelector';
 
 type FormData = {
     allowed_clients: string;
     disallowed_clients: string;
     blocked_hosts: string;
+    blocked_countries: string[];
 };
 
 type FormProps = {
@@ -17,6 +19,7 @@ type FormProps = {
         allowed_clients?: string;
         disallowed_clients?: string;
         blocked_hosts?: string;
+        blocked_countries?: string[];
     };
     onSubmit: (data: FormData) => void;
     processingSet: boolean;
@@ -36,13 +39,14 @@ const Form = ({ initialValues, onSubmit, processingSet }: FormProps) => {
             allowed_clients: initialValues?.allowed_clients || '',
             disallowed_clients: initialValues?.disallowed_clients || '',
             blocked_hosts: initialValues?.blocked_hosts || '',
+            blocked_countries: initialValues?.blocked_countries || [],
         },
     });
 
     const allowedClients = watch('allowed_clients');
 
     const fields: {
-        id: keyof FormData;
+        id: keyof Omit<FormData, 'blocked_countries'>;
         title: string;
         subtitle: ReactNode;
         normalizeOnBlur: (value: string) => string;
@@ -87,7 +91,7 @@ const Form = ({ initialValues, onSubmit, processingSet }: FormProps) => {
         subtitle,
         normalizeOnBlur,
     }: {
-        id: keyof FormData;
+        id: keyof Omit<FormData, 'blocked_countries'>;
         title: string;
         subtitle: ReactNode;
         normalizeOnBlur: (value: string) => string;
@@ -125,6 +129,27 @@ const Form = ({ initialValues, onSubmit, processingSet }: FormProps) => {
     return (
         <form onSubmit={handleSubmit(onSubmit)}>
             {fields.map((f) => renderField(f))}
+
+            {/* Blocked countries section */}
+            <div className="form__group mb-5">
+                <label className="form__label form__label--with-desc">
+                    {t('access_blocked_countries_title')}
+                </label>
+                <div className="form__desc form__desc--top">
+                    {t('access_blocked_countries_desc')}
+                </div>
+                <Controller
+                    name="blocked_countries"
+                    control={control}
+                    render={({ field }) => (
+                        <CountrySelector
+                            value={field.value}
+                            onChange={field.onChange}
+                            disabled={processingSet}
+                        />
+                    )}
+                />
+            </div>
 
             <div className="card-actions">
                 <div className="btn-list">

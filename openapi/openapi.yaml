@@ -1061,6 +1061,27 @@
       'summary': 'Set (dis)allowed clients, blocked hosts, etc.'
       'tags':
       - 'clients'
+  '/access/blocked_countries/refresh':
+    'post':
+      'operationId': 'accessBlockedCountriesRefresh'
+      'responses':
+        '200':
+          'description': 'IP ranges refreshed successfully.'
+          'content':
+            'application/json':
+              'schema':
+                'type': 'object'
+                'properties':
+                  'message':
+                    'type': 'string'
+                  'count':
+                    'type': 'integer'
+                    'description': 'Total number of blocked IP prefixes loaded.'
+        '500':
+          'description': 'Failed to refresh country IP ranges.'
+      'summary': 'Re-fetch IP ranges for all currently configured blocked countries.'
+      'tags':
+      - 'clients'
   '/blocked_services/services':
     'get':
       'deprecated': true
@@ -2958,6 +2979,18 @@
           'description': 'The blocklist of hosts.'
           'items':
             'type': 'string'
+          'type': 'array'
+        'blocked_countries':
+          'description': >
+            The list of two-letter ISO country codes (lowercase) whose IP
+            ranges should be blocked.  IP ranges are fetched from ipdeny.com
+            at startup and when the list is updated.
+          'items':
+            'type': 'string'
+            'minLength': 2
+            'maxLength': 2
+            'pattern': '^[a-z]{2}$'
+            'example': 'fr'
           'type': 'array'
       'type': 'object'
     'ClientsFindEntry':

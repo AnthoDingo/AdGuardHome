@@ -1,6 +1,7 @@
 package dnsforward
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -170,6 +171,7 @@ type accessListJSON struct {
 	AllowedClients    []string `json:"allowed_clients"`
 	DisallowedClients []string `json:"disallowed_clients"`
 	BlockedHosts      []string `json:"blocked_hosts"`
+	BlockedCountries  []string `json:"blocked_countries"`
 }
 
 func (s *Server) accessListJSON() (j accessListJSON) {
@@ -180,6 +182,7 @@ func (s *Server) accessListJSON() (j accessListJSON) {
 		AllowedClients:    slices.Clone(s.conf.AllowedClients),
 		DisallowedClients: slices.Clone(s.conf.DisallowedClients),
 		BlockedHosts:      slices.Clone(s.conf.BlockedHosts),
+		BlockedCountries:  slices.Clone(s.conf.BlockedCountries),
 	}
 }
 
@@ -273,6 +276,7 @@ func (s *Server) handleAccessSet(w http.ResponseWriter, r *http.Request) {
 		"allowed", len(list.AllowedClients),
 		"disallowed", len(list.DisallowedClients),
 		"blocked_hosts", len(list.BlockedHosts),
+		"blocked_countries", len(list.BlockedCountries),
 	)
 
 	defer s.conf.ConfModifier.Apply(ctx)
@@ -283,5 +287,49 @@ func (s *Server) handleAccessSet(w http.ResponseWriter, r *http.Request) {
 	s.conf.AllowedClients = list.AllowedClients
 	s.conf.DisallowedClients = list.DisallowedClients
 	s.conf.BlockedHosts = list.BlockedHosts
+	s.conf.BlockedCountries = list.BlockedCountries
 	s.access = a
+
+	// Update country blocker in background so the HTTP response is not held.
+	if s.countryBlocker != nil {
+		go func() {
+			updateErr := s.countryBlocker.update(context.Background(), list.BlockedCountries)
+			if updateErr != nil {
+				l.WarnContext(ctx, "updating country blocker", "err", updateErr)
+			}
+		}()
+	}
+}
+
+// handleRefreshBlockedCountries handles POST /control/access/blocked_countries/refresh.
+// It re-fetches the IP ranges for all currently configured blocked countries.
+func (s *Server) handleRefreshBlockedCountries(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	s.serverLock.RLock()
+	countries := slices.Clone(s.conf.BlockedCountries)
+	s.serverLock.RUnlock()
+
+	if s.countryBlocker == nil || len(countries) == 0 {
+		aghhttp.WriteJSONResponseOK(ctx, s.logger, w, r, struct {
+			Message string `json:"message"`
+		}{"no countries configured"})
+
+		return
+	}
+
+	if err := s.countryBlocker.update(ctx, countries); err != nil {
+		aghhttp.ErrorAndLog(ctx, s.logger, r, w, http.StatusInternalServerError,
+			"refreshing country IP ranges: %s", err)
+
+		return
+	}
+
+	aghhttp.WriteJSONResponseOK(ctx, s.logger, w, r, struct {
+		Message string `json:"message"`
+		Count   int    `json:"count"`
+	}{
+		Message: "country IP ranges refreshed",
+		Count:   s.countryBlocker.len(),
+	})
 }
