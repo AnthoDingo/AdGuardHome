@@ -291,11 +291,17 @@ func (s *Server) handleAccessSet(w http.ResponseWriter, r *http.Request) {
 	s.access = a
 
 	// Update country blocker in background so the HTTP response is not held.
+	// FIX #4 — use context.Background() for both the update and the log call:
+	// the handler's ctx is cancelled as soon as the HTTP response is sent, so
+	// using it inside the goroutine would cause the warn log to be dropped and
+	// could propagate a spurious cancellation to the HTTP fetch.
 	if s.countryBlocker != nil {
+		countries := list.BlockedCountries
 		go func() {
-			updateErr := s.countryBlocker.update(context.Background(), list.BlockedCountries)
+			bgCtx := context.Background()
+			updateErr := s.countryBlocker.update(bgCtx, countries)
 			if updateErr != nil {
-				l.WarnContext(ctx, "updating country blocker", "err", updateErr)
+				l.WarnContext(bgCtx, "updating country blocker", "err", updateErr)
 			}
 		}()
 	}

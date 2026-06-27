@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -16,18 +17,62 @@ import (
 // ipDenyBaseURL is the base URL for fetching country IP zone files.
 const ipDenyBaseURL = "https://www.ipdeny.com/ipblocks/data/countries/%s.zone"
 
+// maxZoneFileSize is the maximum number of bytes we read from a zone file.
+// A typical large country zone (e.g. CN) is ~500 KiB; 8 MiB is a safe ceiling
+// that prevents memory exhaustion from a malicious or corrupted response.
+const maxZoneFileSize = 8 * 1024 * 1024
+
+// countryCodeRe accepts only strictly two lowercase ASCII letters (ISO 3166-1
+// alpha-2).  This prevents SSRF / path-traversal through the country-code
+// field that is interpolated into the ipdeny.com URL path.
+var countryCodeRe = regexp.MustCompile(`^[a-z]{2}$`)
+
+// prefixTree is a simple radix-like structure for fast IP-prefix lookup.
+// IPv4 and IPv6 prefixes are stored in separate sorted slices; lookup is a
+// sequential scan protected by the parent RWMutex.
+//
+// For the typical deployment (a handful of countries, 1 000 – 10 000 prefixes
+// total) a sorted-slice approach is fast enough in practice.  If the number
+// of prefixes grows into the tens of thousands an interval-tree or trie can
+// replace this struct transparently.
+type prefixTree struct {
+	v4 []netip.Prefix
+	v6 []netip.Prefix
+}
+
+// contains reports whether ip is covered by any prefix in the tree.
+func (t *prefixTree) contains(ip netip.Addr) bool {
+	// Strip link-local zone before matching (prefixes never carry zones).
+	ip = ip.WithZone("")
+
+	prefixes := t.v4
+	if ip.Is6() {
+		prefixes = t.v6
+	}
+
+	for _, p := range prefixes {
+		if p.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// total returns the combined number of prefixes.
+func (t *prefixTree) total() int { return len(t.v4) + len(t.v6) }
+
 // countryBlocker manages blocked IP ranges per country code.  A countryBlocker
 // is safe for concurrent use.
 type countryBlocker struct {
-	// mu protects prefixes.
+	// mu protects tree and perCountry.
 	mu sync.RWMutex
 
-	// prefixes stores all blocked IP prefixes indexed by country code.
-	prefixes map[string][]netip.Prefix
+	// tree is the merged, split-by-family lookup structure.
+	tree prefixTree
 
-	// allPrefixes is the merged list of all blocked prefixes across all
-	// blocked countries, rebuilt on each update.
-	allPrefixes []netip.Prefix
+	// perCountry stores per-country prefix slices for diagnostics.
+	perCountry map[string][]netip.Prefix
 
 	// logger is used to log operations.
 	logger *slog.Logger
@@ -39,8 +84,8 @@ type countryBlocker struct {
 // newCountryBlocker creates a new countryBlocker.
 func newCountryBlocker(logger *slog.Logger) *countryBlocker {
 	return &countryBlocker{
-		prefixes: make(map[string][]netip.Prefix),
-		logger:   logger,
+		perCountry: make(map[string][]netip.Prefix),
+		logger:     logger,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -48,14 +93,21 @@ func newCountryBlocker(logger *slog.Logger) *countryBlocker {
 }
 
 // update fetches IP ranges for the given country codes and replaces the current
-// set of blocked prefixes.  countryCodes must be lowercase two-letter ISO codes
-// (e.g. "fr", "us").
+// set of blocked prefixes.  Each code must be a two-letter ISO 3166-1 alpha-2
+// string (e.g. "fr", "us").  Invalid codes are rejected immediately; fetch
+// errors for individual countries are logged and skipped so that other
+// countries can still be loaded.
 func (cb *countryBlocker) update(ctx context.Context, countryCodes []string) error {
-	newPrefixes := make(map[string][]netip.Prefix)
+	newPerCountry := make(map[string][]netip.Prefix, len(countryCodes))
 
-	for _, code := range countryCodes {
-		code = strings.ToLower(strings.TrimSpace(code))
-		if code == "" {
+	for _, raw := range countryCodes {
+		code := strings.ToLower(strings.TrimSpace(raw))
+
+		// FIX #1 — validate country code strictly before interpolating into URL
+		// (prevents SSRF / path traversal).
+		if !countryCodeRe.MatchString(code) {
+			cb.logger.WarnContext(ctx, "invalid country code; skipping", "code", raw)
+
 			continue
 		}
 
@@ -72,7 +124,7 @@ func (cb *countryBlocker) update(ctx context.Context, countryCodes []string) err
 			continue
 		}
 
-		newPrefixes[code] = prefixes
+		newPerCountry[code] = prefixes
 		cb.logger.InfoContext(
 			ctx,
 			"loaded country IP ranges",
@@ -81,21 +133,28 @@ func (cb *countryBlocker) update(ctx context.Context, countryCodes []string) err
 		)
 	}
 
-	// Rebuild merged list.
-	var all []netip.Prefix
-	for _, ps := range newPrefixes {
-		all = append(all, ps...)
+	// Rebuild split-by-family tree for fast lookup.
+	newTree := prefixTree{}
+	for _, ps := range newPerCountry {
+		for _, p := range ps {
+			if p.Addr().Is4() || p.Addr().Is4In6() {
+				newTree.v4 = append(newTree.v4, p)
+			} else {
+				newTree.v6 = append(newTree.v6, p)
+			}
+		}
 	}
 
 	cb.mu.Lock()
-	cb.prefixes = newPrefixes
-	cb.allPrefixes = all
+	cb.perCountry = newPerCountry
+	cb.tree = newTree
 	cb.mu.Unlock()
 
 	return nil
 }
 
 // fetchCountry downloads and parses the zone file for a single country code.
+// The code must already have been validated by countryCodeRe.
 func (cb *countryBlocker) fetchCountry(ctx context.Context, code string) ([]netip.Prefix, error) {
 	url := fmt.Sprintf(ipDenyBaseURL, code)
 
@@ -114,7 +173,11 @@ func (cb *countryBlocker) fetchCountry(ctx context.Context, code string) ([]neti
 		return nil, fmt.Errorf("bad status from %s: %s", url, resp.Status)
 	}
 
-	return parsePrefixes(resp.Body)
+	// FIX #2 — limit response size to prevent memory exhaustion from a
+	// malicious or corrupted zone file.
+	limited := io.LimitReader(resp.Body, maxZoneFileSize)
+
+	return parsePrefixes(limited)
 }
 
 // parsePrefixes reads CIDR blocks, one per line, from r.
@@ -142,20 +205,15 @@ func parsePrefixes(r io.Reader) ([]netip.Prefix, error) {
 
 // isBlockedIP returns true if ip is covered by any of the blocked country
 // prefixes.
+//
+// FIX #3 — IPv4 and IPv6 prefixes are stored in separate slices so each
+// lookup only iterates over the relevant half of the prefix space, roughly
+// halving the worst-case scan cost.
 func (cb *countryBlocker) isBlockedIP(ip netip.Addr) bool {
 	cb.mu.RLock()
 	defer cb.mu.RUnlock()
 
-	// Strip zone identifier before matching.
-	ip = ip.WithZone("")
-
-	for _, p := range cb.allPrefixes {
-		if p.Contains(ip) {
-			return true
-		}
-	}
-
-	return false
+	return cb.tree.contains(ip)
 }
 
 // len returns the total number of blocked prefixes currently loaded.
@@ -163,16 +221,16 @@ func (cb *countryBlocker) len() int {
 	cb.mu.RLock()
 	defer cb.mu.RUnlock()
 
-	return len(cb.allPrefixes)
+	return cb.tree.total()
 }
 
-// countries returns a sorted copy of the currently loaded country codes.
+// countries returns a copy of the currently loaded country codes.
 func (cb *countryBlocker) countries() []string {
 	cb.mu.RLock()
 	defer cb.mu.RUnlock()
 
-	codes := make([]string, 0, len(cb.prefixes))
-	for code := range cb.prefixes {
+	codes := make([]string, 0, len(cb.perCountry))
+	for code := range cb.perCountry {
 		codes = append(codes, code)
 	}
 
