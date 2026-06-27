@@ -908,6 +908,23 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// isBlockedByIP returns whether ip is blocked by the access list or the country
+// blocker, together with the matching rule string.  It must be called with
+// s.serverLock held at least for reading.
+func (s *Server) isBlockedByIP(ip netip.Addr) (blocked bool, rule string) {
+	blocked, rule = s.access.isBlockedIP(ip)
+	if blocked || s.access.allowlistMode() || s.countryBlocker == nil {
+		return blocked, rule
+	}
+
+	// Country-based blocking only applies in blocklist mode.
+	if s.countryBlocker.isBlockedIP(ip) {
+		return true, "country:" + ip.String()
+	}
+
+	return false, ""
+}
+
 // IsBlockedClient returns true if the client is blocked by the current access
 // settings.
 func (s *Server) IsBlockedClient(ip netip.Addr, clientID string) (blocked bool, rule string) {
@@ -916,15 +933,7 @@ func (s *Server) IsBlockedClient(ip netip.Addr, clientID string) (blocked bool, 
 
 	blockedByIP := false
 	if ip != (netip.Addr{}) {
-		blockedByIP, rule = s.access.isBlockedIP(ip)
-
-		// Also check country-based blocking (only in blocklist mode).
-		if !blockedByIP && !s.access.allowlistMode() && s.countryBlocker != nil {
-			if s.countryBlocker.isBlockedIP(ip) {
-				blockedByIP = true
-				rule = "country:" + ip.String()
-			}
-		}
+		blockedByIP, rule = s.isBlockedByIP(ip)
 	}
 
 	allowlistMode := s.access.allowlistMode()
