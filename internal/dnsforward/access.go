@@ -172,6 +172,7 @@ type accessListJSON struct {
 	DisallowedClients []string `json:"disallowed_clients"`
 	BlockedHosts      []string `json:"blocked_hosts"`
 	BlockedCountries  []string `json:"blocked_countries"`
+	CountriesMode     string   `json:"countries_mode"`
 }
 
 func (s *Server) accessListJSON() (j accessListJSON) {
@@ -183,6 +184,7 @@ func (s *Server) accessListJSON() (j accessListJSON) {
 		DisallowedClients: slices.Clone(s.conf.DisallowedClients),
 		BlockedHosts:      slices.Clone(s.conf.BlockedHosts),
 		BlockedCountries:  slices.Clone(s.conf.BlockedCountries),
+		CountriesMode:     s.conf.CountriesMode,
 	}
 }
 
@@ -277,6 +279,7 @@ func (s *Server) handleAccessSet(w http.ResponseWriter, r *http.Request) {
 		"disallowed", len(list.DisallowedClients),
 		"blocked_hosts", len(list.BlockedHosts),
 		"blocked_countries", len(list.BlockedCountries),
+		"countries_mode", list.CountriesMode,
 	)
 
 	defer s.conf.ConfModifier.Apply(ctx)
@@ -288,6 +291,7 @@ func (s *Server) handleAccessSet(w http.ResponseWriter, r *http.Request) {
 	s.conf.DisallowedClients = list.DisallowedClients
 	s.conf.BlockedHosts = list.BlockedHosts
 	s.conf.BlockedCountries = list.BlockedCountries
+	s.conf.CountriesMode = list.CountriesMode
 	s.access = a
 
 	// Update country blocker in background so the HTTP response is not held.
@@ -297,8 +301,10 @@ func (s *Server) handleAccessSet(w http.ResponseWriter, r *http.Request) {
 	// could propagate a spurious cancellation to the HTTP fetch.
 	if s.countryBlocker != nil {
 		countries := list.BlockedCountries
+		mode := list.CountriesMode
 		go func() {
 			bgCtx := context.Background()
+			s.countryBlocker.setMode(mode)
 			s.countryBlocker.update(bgCtx, countries)
 		}()
 	}

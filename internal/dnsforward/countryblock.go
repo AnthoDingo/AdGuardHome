@@ -22,6 +22,13 @@ const ipDenyBaseURL = "https://www.ipdeny.com/ipblocks/data/countries/%s.zone"
 // that prevents memory exhaustion from a malicious or corrupted response.
 const maxZoneFileSize = 8 * 1024 * 1024
 
+// CountriesModeBlock blocks requests from listed countries (default).
+const CountriesModeBlock = "block"
+
+// CountriesModeAllow blocks requests from countries NOT in the list,
+// effectively creating a country allowlist.
+const CountriesModeAllow = "allow"
+
 // countryCodeRe accepts only strictly two lowercase ASCII letters (ISO 3166-1
 // alpha-2).  This prevents SSRF / path-traversal through the country-code
 // field that is interpolated into the ipdeny.com URL path.
@@ -77,13 +84,23 @@ type countryBlocker struct {
 	// logger is used to log operations.
 	logger *slog.Logger
 
+	// mode is CountriesModeBlock or CountriesModeAllow.
+	mode string
+
 	// httpClient is used to fetch the IP zone files.
 	httpClient *http.Client
 }
 
-// newCountryBlocker creates a new countryBlocker.
-func newCountryBlocker(logger *slog.Logger) *countryBlocker {
+// newCountryBlocker creates a new countryBlocker.  mode must be
+// CountriesModeBlock or CountriesModeAllow; an empty string defaults to
+// CountriesModeBlock.
+func newCountryBlocker(logger *slog.Logger, mode string) *countryBlocker {
+	if mode != CountriesModeAllow {
+		mode = CountriesModeBlock
+	}
+
 	return &countryBlocker{
+		mode:       mode,
 		perCountry: make(map[string][]netip.Prefix),
 		logger:     logger,
 		httpClient: &http.Client{
@@ -206,17 +223,26 @@ func parsePrefixes(r io.Reader) ([]netip.Prefix, error) {
 	return prefixes, sc.Err()
 }
 
-// isBlockedIP returns true if ip is covered by any of the blocked country
-// prefixes.
+// isBlockedIP returns true if ip should be blocked according to the
+// configured mode and country list.
+//
+// CountriesModeBlock: block if the IP is in any listed country.
+// CountriesModeAllow: block if the IP is NOT in any listed country.
 //
 // FIX #3 — IPv4 and IPv6 prefixes are stored in separate slices so each
-// lookup only iterates over the relevant half of the prefix space, roughly
-// halving the worst-case scan cost.
+// lookup only iterates over the relevant half of the prefix space.
 func (cb *countryBlocker) isBlockedIP(ip netip.Addr) bool {
 	cb.mu.RLock()
 	defer cb.mu.RUnlock()
 
-	return cb.tree.contains(ip)
+	inList := cb.tree.contains(ip)
+	if cb.mode == CountriesModeAllow {
+		// Allow mode: block anything NOT in the country list.
+		return !inList
+	}
+
+	// Block mode (default): block anything IN the country list.
+	return inList
 }
 
 // len returns the total number of blocked prefixes currently loaded.
@@ -225,6 +251,17 @@ func (cb *countryBlocker) len() int {
 	defer cb.mu.RUnlock()
 
 	return cb.tree.total()
+}
+
+// setMode updates the blocking mode without reloading the IP ranges.
+func (cb *countryBlocker) setMode(mode string) {
+	if mode != CountriesModeAllow {
+		mode = CountriesModeBlock
+	}
+
+	cb.mu.Lock()
+	cb.mode = mode
+	cb.mu.Unlock()
 }
 
 // countries returns a copy of the currently loaded country codes.

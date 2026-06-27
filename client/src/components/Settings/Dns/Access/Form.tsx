@@ -12,6 +12,7 @@ type FormData = {
     disallowed_clients: string;
     blocked_hosts: string;
     blocked_countries: string[];
+    countries_mode: 'block' | 'allow';
 };
 
 type FormProps = {
@@ -20,6 +21,7 @@ type FormProps = {
         disallowed_clients?: string;
         blocked_hosts?: string;
         blocked_countries?: string[];
+        countries_mode?: string;
     };
     onSubmit: (data: FormData) => void;
     processingSet: boolean;
@@ -40,13 +42,16 @@ const Form = ({ initialValues, onSubmit, processingSet }: FormProps) => {
             disallowed_clients: initialValues?.disallowed_clients || '',
             blocked_hosts: initialValues?.blocked_hosts || '',
             blocked_countries: initialValues?.blocked_countries || [],
+            countries_mode: (initialValues?.countries_mode as 'block' | 'allow') || 'block',
         },
     });
 
     const allowedClients = watch('allowed_clients');
+    const countriesMode = watch('countries_mode');
+    const blockedCountries = watch('blocked_countries');
 
     const fields: {
-        id: keyof Omit<FormData, 'blocked_countries'>;
+        id: keyof Omit<FormData, 'blocked_countries' | 'countries_mode'>;
         title: string;
         subtitle: ReactNode;
         normalizeOnBlur: (value: string) => string;
@@ -91,7 +96,7 @@ const Form = ({ initialValues, onSubmit, processingSet }: FormProps) => {
         subtitle,
         normalizeOnBlur,
     }: {
-        id: keyof Omit<FormData, 'blocked_countries'>;
+        id: keyof Omit<FormData, 'blocked_countries' | 'countries_mode'>;
         title: string;
         subtitle: ReactNode;
         normalizeOnBlur: (value: string) => string;
@@ -126,18 +131,71 @@ const Form = ({ initialValues, onSubmit, processingSet }: FormProps) => {
         );
     };
 
+    // Dynamic label and description based on current mode
+    const sectionTitle =
+        countriesMode === 'allow'
+            ? t('access_countries_allowlist_title')
+            : t('access_blocked_countries_title');
+
+    const sectionDesc =
+        countriesMode === 'allow'
+            ? t('access_countries_allowlist_desc')
+            : t('access_blocked_countries_desc');
+
     return (
         <form onSubmit={handleSubmit(onSubmit)}>
             {fields.map((f) => renderField(f))}
 
-            {/* Blocked countries section */}
+            {/* Country access control section */}
             <div className="form__group mb-5">
-                <label className="form__label form__label--with-desc">
-                    {t('access_blocked_countries_title')}
-                </label>
-                <div className="form__desc form__desc--top">
-                    {t('access_blocked_countries_desc')}
+                <div className="d-flex align-items-center justify-content-between mb-1">
+                    <label className="form__label form__label--with-desc mb-0">
+                        {sectionTitle}
+                        {blockedCountries.length > 0 && (
+                            <span className="badge badge-secondary ml-2">
+                                {blockedCountries.length}
+                            </span>
+                        )}
+                    </label>
+
+                    {/* Block / Allow toggle */}
+                    <Controller
+                        name="countries_mode"
+                        control={control}
+                        render={({ field }) => (
+                            <div
+                                className="btn-group btn-group-sm"
+                                role="group"
+                                aria-label={t('countries_mode_label')}>
+                                <button
+                                    type="button"
+                                    className={`btn ${
+                                        field.value === 'block'
+                                            ? 'btn-danger'
+                                            : 'btn-outline-danger'
+                                    }`}
+                                    disabled={processingSet}
+                                    onClick={() => field.onChange('block')}>
+                                    {t('countries_mode_block')}
+                                </button>
+                                <button
+                                    type="button"
+                                    className={`btn ${
+                                        field.value === 'allow'
+                                            ? 'btn-success'
+                                            : 'btn-outline-success'
+                                    }`}
+                                    disabled={processingSet}
+                                    onClick={() => field.onChange('allow')}>
+                                    {t('countries_mode_allow')}
+                                </button>
+                            </div>
+                        )}
+                    />
                 </div>
+
+                <div className="form__desc form__desc--top">{sectionDesc}</div>
+
                 <Controller
                     name="blocked_countries"
                     control={control}

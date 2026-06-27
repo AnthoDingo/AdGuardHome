@@ -2982,9 +2982,9 @@
           'type': 'array'
         'blocked_countries':
           'description': >
-            The list of two-letter ISO country codes (lowercase) whose IP
-            ranges should be blocked.  IP ranges are fetched from ipdeny.com
-            at startup and when the list is updated.
+            The list of two-letter ISO country codes (lowercase) used for
+            country-based access control.  IP ranges are fetched from
+            ipdeny.com at startup and when the list is updated.
           'items':
             'type': 'string'
             'minLength': 2
@@ -2992,6 +2992,15 @@
             'pattern': '^[a-z]{2}$'
             'example': 'fr'
           'type': 'array'
+        'countries_mode':
+          'description': >
+            Controls how blocked_countries is interpreted.
+            'block' (default) — block requests from the listed countries.
+            'allow' — only allow requests from the listed countries;
+            block all others.
+          'type': 'string'
+          'enum': ['block', 'allow']
+          'default': 'block'
       'type': 'object'
     'ClientsFindEntry':
       'type': 'object'

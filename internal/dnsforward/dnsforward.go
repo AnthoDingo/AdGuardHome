@@ -260,7 +260,7 @@ func NewServer(p DNSCreateParams) (s *Server, err error) {
 		},
 	}
 
-	s.countryBlocker = newCountryBlocker(s.logger)
+	s.countryBlocker = newCountryBlocker(s.logger, "")
 
 	s.sysResolvers, err = sysresolv.NewSystemResolvers(nil, defaultPlainDNSPort)
 	if err != nil {
@@ -908,7 +908,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // It is called from Prepare and is a no-op when no countries are configured.
 // Errors are logged and do not prevent the server from starting.
 func (s *Server) initCountryBlocker(ctx context.Context) {
-	if len(s.conf.BlockedCountries) == 0 || s.countryBlocker == nil {
+	if s.countryBlocker == nil {
+		return
+	}
+
+	s.countryBlocker.setMode(s.conf.CountriesMode)
+
+	if len(s.conf.BlockedCountries) == 0 {
 		return
 	}
 
