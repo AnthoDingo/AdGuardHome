@@ -238,6 +238,8 @@ export type AccessData = {
     allowed_clients: string;
     disallowed_clients: string;
     blocked_hosts: string;
+    blocked_countries: string[];
+    countries_mode: string;
 };
 
 export type DhcpInterface = {
@@ -424,6 +426,8 @@ export const initialState: RootState = {
         allowed_clients: '',
         disallowed_clients: '',
         blocked_hosts: '',
+        blocked_countries: [],
+        countries_mode: 'block',
     },
     clients: {
         processing: true,

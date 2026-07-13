@@ -13,12 +13,14 @@ const access = handleActions(
             processing: false,
         }),
         [actions.getAccessListSuccess.toString()]: (state: any, { payload }: any) => {
-            const { allowed_clients, disallowed_clients, blocked_hosts } = payload;
+            const { allowed_clients, disallowed_clients, blocked_hosts, blocked_countries, countries_mode } = payload;
             const newState = {
                 ...state,
                 allowed_clients: allowed_clients?.join('\n') || '',
                 disallowed_clients: disallowed_clients?.join('\n') || '',
                 blocked_hosts: blocked_hosts?.join('\n') || '',
+                blocked_countries: blocked_countries || [],
+                countries_mode: countries_mode || 'block',
                 processing: false,
             };
             return newState;
@@ -63,6 +65,8 @@ const access = handleActions(
         allowed_clients: '',
         disallowed_clients: '',
         blocked_hosts: '',
+        blocked_countries: [],
+        countries_mode: 'block',
     },
 );
 

@@ -99,6 +99,16 @@ type Config struct {
 	// BlockedHosts is the list of hosts that should be blocked.
 	BlockedHosts []string `yaml:"blocked_hosts"`
 
+	// BlockedCountries is the list of two-letter ISO country codes used for
+	// country-based access control.  IP ranges are fetched from ipdeny.com.
+	BlockedCountries []string `yaml:"blocked_countries"`
+
+	// CountriesMode controls how BlockedCountries is interpreted.
+	// "block"  — block requests from the listed countries (default).
+	// "allow"  — only allow requests from the listed countries; block all
+	//            others.
+	CountriesMode string `yaml:"countries_mode"`
+
 	// TrustedProxies is the list of CIDR networks with proxy servers addresses
 	// from which the DoH requests should be handled.  The value of nil or an
 	// empty slice for this field makes Proxy not trust any address.

@@ -257,6 +257,8 @@ func NewServer(p DNSCreateParams) (s *Server, err error) {
 		},
 	}
 
+	s.countryBlocker = newCountryBlocker(s.logger, "")
+
 	s.sysResolvers, err = sysresolv.NewSystemResolvers(nil, defaultPlainDNSPort)
 	if err != nil {
 		return nil, fmt.Errorf("initializing system resolvers: %w", err)
@@ -515,6 +517,8 @@ func (s *Server) Prepare(ctx context.Context, conf *ServerConfig) (err error) {
 	if err != nil {
 		return fmt.Errorf("preparing access: %w", err)
 	}
+
+	s.initCountryBlocker(ctx)
 
 	proxyConfig.Fallbacks, err = s.setupFallbackDNS()
 	if err != nil {
@@ -897,6 +901,40 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// initCountryBlocker loads IP ranges for any configured blocked countries.
+// It is called from Prepare and is a no-op when no countries are configured.
+// Errors are logged and do not prevent the server from starting.
+func (s *Server) initCountryBlocker(ctx context.Context) {
+	if s.countryBlocker == nil {
+		return
+	}
+
+	s.countryBlocker.setMode(s.conf.CountriesMode)
+
+	if len(s.conf.BlockedCountries) == 0 {
+		return
+	}
+
+	s.countryBlocker.update(ctx, s.conf.BlockedCountries)
+}
+
+// isBlockedByIP returns whether ip is blocked by the access list or the country
+// blocker, together with the matching rule string.  It must be called with
+// s.serverLock held at least for reading.
+func (s *Server) isBlockedByIP(ip netip.Addr) (blocked bool, rule string) {
+	blocked, rule = s.access.isBlockedIP(ip)
+	if blocked || s.access.allowlistMode() || s.countryBlocker == nil {
+		return blocked, rule
+	}
+
+	// Country-based blocking only applies in blocklist mode.
+	if s.countryBlocker.isBlockedIP(ip) {
+		return true, "country:" + ip.String()
+	}
+
+	return false, ""
+}
+
 // IsBlockedClient returns true if the client is blocked by the current access
 // settings.
 func (s *Server) IsBlockedClient(ip netip.Addr, clientID string) (blocked bool, rule string) {
@@ -905,7 +943,7 @@ func (s *Server) IsBlockedClient(ip netip.Addr, clientID string) (blocked bool, 
 
 	blockedByIP := false
 	if ip != (netip.Addr{}) {
-		blockedByIP, rule = s.access.isBlockedIP(ip)
+		blockedByIP, rule = s.isBlockedByIP(ip)
 	}
 
 	allowlistMode := s.access.allowlistMode()
