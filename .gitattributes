@@ -1,3 +1,12 @@
+# Force LF line endings for all text files regardless of local core.autocrlf
+# settings.  Without this, checking the repository out on Windows (with the
+# common core.autocrlf=true default) converts every text file, including the
+# POSIX shell scripts under scripts/make, to CRLF.  Those scripts are then
+# broken when run under a strict POSIX shell (dash/sh, e.g. in WSL or CI):
+# "readonly: verbose: bad variable name" is the classic symptom of a CRLF
+# byte getting appended to a variable name.
+* text=auto eol=lf
+
 client/* linguist-vendored
 # This file contains a lot of inline SVG data, which often interferes with
 # grepping.  Technically, this file must be reviewed when new icons appear, but
