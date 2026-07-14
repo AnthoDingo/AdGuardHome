@@ -1,6 +1,7 @@
 package dnsforward
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"

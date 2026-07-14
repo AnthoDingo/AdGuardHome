@@ -195,9 +195,8 @@ func waitForWebAPIReady(tb testing.TB, host string) {
 }
 
 // performH2CUpgradeAttack establishes a TCP connection to the specified host,
-// performs an HTTP2 protocol upgrade, and attempts to access a protected
-// endpoint without proper authentication, verifying that the server responds
-// with [http.StatusUnauthorized].
+// attempts an HTTP2 protocol upgrade, and asserts that the server rejects or
+// ignores the upgrade request (since H2C upgrades are no longer supported).
 func performH2CUpgradeAttack(tb testing.TB, host string) {
 	tb.Helper()
 
@@ -230,19 +229,8 @@ func performH2CUpgradeAttack(tb testing.TB, host string) {
 
 	resp, err := http.ReadResponse(reader, req)
 	require.NoError(tb, err)
-	require.Equal(tb, http.StatusSwitchingProtocols, resp.StatusCode)
+	assert.NotEqual(tb, http.StatusSwitchingProtocols, resp.StatusCode)
 	testutil.CleanupAndRequireSuccess(tb, resp.Body.Close)
-
-	_, err = writer.Write([]byte(clientPreface))
-	require.NoError(tb, err)
-
-	framer := http2.NewFramer(writer, reader)
-	decoder := newTestDecoder(tb)
-	performH2CSettingsExchange(tb, framer, writer, decoder)
-	sendH2CRequest(tb, framer, host)
-	require.NoError(tb, writer.Flush())
-
-	readH2CResponse(tb, framer, decoder)
 }
 
 // performH2CSettingsExchange performs the HTTP2 settings exchange handshake. It

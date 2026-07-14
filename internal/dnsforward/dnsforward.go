@@ -127,6 +127,9 @@ type Server struct {
 	// access drops disallowed clients.
 	access *accessManager
 
+	// countryBlocker manages blocked IP ranges per country code.
+	countryBlocker *countryBlocker
+
 	// anonymizer masks the client's IP addresses if needed.
 	anonymizer *aghnet.IPMut
 

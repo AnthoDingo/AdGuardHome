@@ -5,6 +5,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { CLIENT_ID_LINK } from '../../../../helpers/constants';
 import { removeEmptyLines, trimMultilineString } from '../../../../helpers/helpers';
 import { Textarea } from '../../../ui/Controls/Textarea';
+import CountrySelector from './CountrySelector';
 
 type FormData = {
     allowed_clients: string;
